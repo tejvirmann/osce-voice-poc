@@ -142,6 +142,14 @@ Custom UI (not Dograh's default UI):
 
 ---
 
+## Clients
+
+| Institution | Description |
+|---|---|
+| [SimLab — UW Madison](https://simlab.wisc.edu/mission-approach/) | Simulation-Based Learning Lab at the Wisconsin Center for Education Research. Uses AI and modern assessment design to provide realistic, structured, evaluative simulation experiences for practitioners. |
+
+---
+
 ## MVP Phases
 
 ### Phase 1 — Core Loop
