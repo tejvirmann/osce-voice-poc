@@ -4,6 +4,8 @@
 
 A real-time, ultra-low latency platform where medical students interact with AI patients over phone or web, and professors can create OSCE scenarios in under 1 minute.
 
+**Docs:** [planv2.md](planv2.md) — detailed implementation plan, OSCE Spec schema, infrastructure map, and ADRs.
+
 ---
 
 ## Vision
@@ -18,9 +20,12 @@ A real-time, ultra-low latency platform where medical students interact with AI 
 ## System Layers
 
 ```
-1. Authoring Layer   — Professor UX (PDF/text → OSCE Spec → Visual Editor)
+1. Authoring Layer   — Custom Professor UX (PDF/text → OSCE Spec → Visual Editor)
+                       Professors never interact with Dograh directly.
 2. Runtime Layer     — Dograh (agent orchestration, state, interrupts, tools)
-3. Model Layer       — Pluggable STT / LLM / TTS per mode
+                       Self-hosted Docker. Our services talk to it via REST API.
+3. Model Layer       — Pluggable STT / LLM / TTS per mode (training vs exam)
+                       Self-hosted (Chatterbox, Llama) + API (ElevenLabs, Claude, Deepgram)
 ```
 
 ---
@@ -135,10 +140,11 @@ Custom UI (not Dograh's default UI):
 
 ## Infrastructure Notes
 
-- **Do not fork Dograh** — use it as the backend runtime, build the authoring + OSCE spec layer on top
-- Colocate TTS/LLM services for latency
-- GPU recommended for self-hosted TTS (Chatterbox) and LLM
-- Stream at every step — no full-sentence waits
+- **Do not fork Dograh** — run published Docker images, extend via its REST API only (ADR-002)
+- Two service layers: Dograh stack (`:8000`, `:3010`, Postgres, Redis, MinIO) + our services (`osce-backend :8001`, `osce-frontend :3000`, `chatterbox-shim :8889`, Ollama `:11434`)
+- Colocate TTS and LLM containers on the same host as Dograh to minimize network hops
+- GPU recommended for self-hosted TTS (Chatterbox) and LLM (Llama); API fallbacks work for Phase 1
+- Stream at every step — no full-sentence waits; target <800ms mic → first audio byte
 
 ---
 
@@ -152,19 +158,29 @@ Custom UI (not Dograh's default UI):
 
 ## MVP Phases
 
-### Phase 1 — Core Loop
-- [ ] Text → OSCE Spec (LLM extraction)
-- [ ] Dograh integration + patient agent
-- [ ] Basic voice loop (STT → LLM → TTS)
-- [ ] Voice model evaluation: Chatterbox vs Kokoro vs ElevenLabs
+> Full detail, OSCE Spec schema, and ADRs in [planv2.md](planv2.md).
 
-### Phase 2 — Authoring
-- [ ] PDF ingestion + parsing
-- [ ] OSCE Spec validation
-- [ ] Test mode for professors
+### Phase 1 — Core Loop (2 weeks)
+Goal: student calls a Twilio number, speaks to an AI patient, barge-in works, latency <800ms.
+- [ ] Hardcoded chest pain scenario as a Dograh workflow (3 patient states, Deepgram STT, Llama + Claude, Chatterbox TTS)
+- [ ] Twilio inbound call → Dograh → patient agent
+- [ ] Barge-in and interrupt verified in a real call
+- [ ] TTS evaluation: Chatterbox vs Kokoro vs ElevenLabs (latency + naturalness + cost)
+- [ ] End-to-end latency benchmark; tune until <800ms
+- [ ] Verify Dograh REST API supports programmatic workflow CRUD (required for Phase 2)
 
-### Phase 3 — Polish
-- [ ] Visual flow editor
-- [ ] Evaluator agent + scoring
-- [ ] Narrator agent + SMS
-- [ ] Topic-triggered interruptions
+### Phase 2 — Authoring Pipeline (2–3 weeks)
+Goal: professor uploads a PDF, reviews the extracted scenario, publishes, and a student calls it.
+- [ ] OSCE Spec JSON schema (Pydantic, versioned)
+- [ ] PDF → OSCE Spec extractor (PyMuPDF + LLM extraction prompt + validation)
+- [ ] OSCE Spec → Dograh workflow generator (creates training + exam workflows via API)
+- [ ] TTS shim for Chatterbox/Kokoro (ElevenLabs-compatible endpoint, ~50 lines)
+- [ ] Professor web app MVP: `/create`, `/my-osces`, `/test/:id`
+- [ ] Test mode: browser call with live state transition panel
+
+### Phase 3 — Multi-Agent + Evaluation (3–4 weeks)
+Goal: post-call scores visible in dashboard; narrator fires on keywords; visual flow editor live.
+- [ ] Evaluator service: post-call webhook → Claude grades transcript against rubric → structured score
+- [ ] Student + professor score dashboard
+- [ ] Narrator agent: keyword detection → inject audio cue or send SMS via Twilio
+- [ ] Custom visual flow editor (React Flow): nodes = states, edges = transitions, OSCE-optimized
